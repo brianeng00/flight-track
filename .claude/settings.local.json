@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm -rf ~/.claude/skills/gstack)",
+      "Bash(git clone *)",
+      "Read(//Users/brian/.claude/skills/gstack/**)",
+      "Bash(./setup)",
+      "Bash(~/.claude/skills/gstack/bin/gstack-team-init required *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ]
+  }
+}
