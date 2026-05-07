@@ -1,0 +1,265 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { BoundingBox, Flight, OpenSkyTokenResponse } from '../types';
+import { parseStateVector } from '../lib/opensky';
+import { deadReckon } from '../lib/deadReckon';
+import { sortByDistance } from '../lib/geo';
+
+/**
+ * OpenSky Network integration.
+ *
+ * Architecture:
+ *   - OAuth2 client credentials → access_token cached in memory
+ *   - Proactive token refresh at (expires_in - 60)s — no missed polls
+ *   - 60s poll interval — 1,440 calls/day (well within 4,000 credit/day limit)
+ *   - 429 exponential backoff: 120s → 240s → 480s → cap 300s
+ *   - Page Visibility API: pause polling when tab hidden, resume on visible
+ *   - Dead reckoning at 10fps (setInterval 100ms) between polls
+ *     - Uses heading + speed to project positions
+ *     - on_ground aircraft are skipped (position stays fixed)
+ *
+ * Rate budget:
+ *   60s interval × 24h = 1,440 credits/day (free tier: 4,000)
+ */
+
+const OPENSKY_BASE = 'https://opensky-network.org/api';
+const TOKEN_URL = 'https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token';
+const POLL_INTERVAL_MS = 60_000;
+const DR_INTERVAL_MS = 100; // 10fps dead reckoning
+const MAX_BACKOFF_MS = 300_000; // 5 minutes
+
+const CLIENT_ID = import.meta.env.VITE_OPENSKY_CLIENT_ID as string | undefined;
+const CLIENT_SECRET = import.meta.env.VITE_OPENSKY_CLIENT_SECRET as string | undefined;
+const USE_AUTH = Boolean(CLIENT_ID && CLIENT_SECRET);
+
+interface OpenSkyState {
+  flights: Flight[];
+  loading: boolean;
+  /** null = no error */
+  error: string | null;
+  /** ISO string of last successful poll */
+  lastUpdated: string | null;
+  /** When rate-limited, seconds until next retry */
+  rateLimitRetryIn: number | null;
+}
+
+interface TokenCache {
+  token: string;
+  expiresAt: number; // Date.now() ms
+}
+
+export function useOpenSky(
+  bbox: BoundingBox | null,
+  userLat: number,
+  userLng: number,
+  radiusNm: number,
+) {
+  const [state, setState] = useState<OpenSkyState>({
+    flights: [],
+    loading: false,
+    error: null,
+    lastUpdated: null,
+    rateLimitRetryIn: null,
+  });
+
+  // Mutable refs — don't trigger re-renders
+  const tokenRef = useRef<TokenCache | null>(null);
+  const tokenRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const drTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const backoffMs = useRef(POLL_INTERVAL_MS);
+  const lastPollData = useRef<{ flights: Flight[]; pollTime: number }>({
+    flights: [],
+    pollTime: 0,
+  });
+  const isMounted = useRef(true);
+  const isPollingPaused = useRef(false);
+  const rateLimitCountdown = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Token management ──────────────────────────────────────────────────────
+
+  const fetchToken = useCallback(async (): Promise<string | null> => {
+    if (!USE_AUTH) return null;
+    try {
+      const body = new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: CLIENT_ID!,
+        client_secret: CLIENT_SECRET!,
+      });
+      const res = await fetch(TOKEN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) throw new Error(`Token fetch ${res.status}`);
+      const data: OpenSkyTokenResponse = await res.json();
+
+      const expiresAt = Date.now() + data.expires_in * 1000;
+      tokenRef.current = { token: data.access_token, expiresAt };
+
+      // Schedule proactive refresh 60s before expiry
+      const refreshIn = Math.max(0, data.expires_in * 1000 - 60_000);
+      if (tokenRefreshTimer.current) clearTimeout(tokenRefreshTimer.current);
+      tokenRefreshTimer.current = setTimeout(() => {
+        if (isMounted.current) fetchToken();
+      }, refreshIn);
+
+      return data.access_token;
+    } catch (err) {
+      console.warn('[useOpenSky] Token fetch failed:', err);
+      return null;
+    }
+  }, []);
+
+  const getToken = useCallback(async (): Promise<string | null> => {
+    if (!USE_AUTH) return null;
+    if (tokenRef.current && tokenRef.current.expiresAt > Date.now() + 5000) {
+      return tokenRef.current.token;
+    }
+    return fetchToken();
+  }, [fetchToken]);
+
+  // ── Flight data polling ───────────────────────────────────────────────────
+
+  const poll = useCallback(async () => {
+    if (!bbox || isPollingPaused.current || !isMounted.current) return;
+
+    try {
+      const token = await getToken();
+      const params = new URLSearchParams({
+        lamin: bbox.lamin.toString(),
+        lamax: bbox.lamax.toString(),
+        lomin: bbox.lomin.toString(),
+        lomax: bbox.lomax.toString(),
+      });
+      const headers: HeadersInit = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`${OPENSKY_BASE}/states/all?${params}`, {
+        headers,
+        signal: AbortSignal.timeout(15_000),
+      });
+
+      if (res.status === 429) {
+        // Exponential backoff
+        backoffMs.current = Math.min(backoffMs.current * 2, MAX_BACKOFF_MS);
+        const retryInSec = Math.round(backoffMs.current / 1000);
+
+        // Clear existing poll and schedule retry after backoff
+        if (pollTimer.current) clearInterval(pollTimer.current);
+        pollTimer.current = setTimeout(
+          () => {
+            if (isMounted.current) {
+              poll();
+              // Re-establish regular interval after recovery
+              pollTimer.current = setInterval(poll, POLL_INTERVAL_MS);
+            }
+          },
+          backoffMs.current,
+        ) as unknown as ReturnType<typeof setInterval>;
+
+        // Countdown display
+        if (rateLimitCountdown.current) clearInterval(rateLimitCountdown.current);
+        let remaining = retryInSec;
+        setState(s => ({ ...s, rateLimitRetryIn: remaining }));
+        rateLimitCountdown.current = setInterval(() => {
+          remaining -= 1;
+          if (remaining <= 0) {
+            clearInterval(rateLimitCountdown.current!);
+            setState(s => ({ ...s, rateLimitRetryIn: null }));
+          } else {
+            setState(s => ({ ...s, rateLimitRetryIn: remaining }));
+          }
+        }, 1000);
+        return;
+      }
+
+      // Reset backoff on success
+      backoffMs.current = POLL_INTERVAL_MS;
+      if (!res.ok) throw new Error(`OpenSky ${res.status}`);
+
+      const data = await res.json();
+      const rawStates: unknown[] = data.states ?? [];
+
+      const flights = rawStates
+        .map(s => parseStateVector(s as Parameters<typeof parseStateVector>[0], userLat, userLng))
+        .filter((f): f is Flight => f !== null)
+        .filter(f => f.distanceNm <= radiusNm);
+
+      const sorted = sortByDistance(flights);
+
+      if (isMounted.current) {
+        lastPollData.current = { flights: sorted, pollTime: Date.now() };
+        setState({
+          flights: sorted,
+          loading: false,
+          error: null,
+          lastUpdated: new Date().toISOString(),
+          rateLimitRetryIn: null,
+        });
+      }
+    } catch (err) {
+      console.warn('[useOpenSky] Poll failed:', err);
+      if (isMounted.current) {
+        setState(s => ({
+          ...s,
+          loading: false,
+          error: s.flights.length > 0 ? 'Data may be stale' : 'Cannot reach OpenSky API',
+        }));
+      }
+    }
+  }, [bbox, getToken, userLat, userLng, radiusNm]);
+
+  // ── Dead reckoning (10fps position interpolation) ─────────────────────────
+
+  useEffect(() => {
+    drTimer.current = setInterval(() => {
+      if (!isMounted.current || lastPollData.current.flights.length === 0) return;
+      const deltaMs = Date.now() - lastPollData.current.pollTime;
+
+      const interpolated = lastPollData.current.flights.map(f => {
+        const { lat, lng } = deadReckon(f.lat, f.lng, f.speedMs, f.headingDeg, deltaMs, f.onGround);
+        return { ...f, lat, lng };
+      });
+
+      setState(s => ({ ...s, flights: interpolated }));
+    }, DR_INTERVAL_MS);
+
+    return () => {
+      if (drTimer.current) clearInterval(drTimer.current);
+    };
+  }, []);
+
+  // ── Polling lifecycle ─────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!bbox) return;
+    isMounted.current = true;
+
+    // Initial poll (show loading on first fetch)
+    setState(s => ({ ...s, loading: s.flights.length === 0 }));
+    poll();
+    pollTimer.current = setInterval(poll, POLL_INTERVAL_MS);
+
+    // Pause/resume on visibility change
+    const handleVisibility = () => {
+      if (document.hidden) {
+        isPollingPaused.current = true;
+      } else {
+        isPollingPaused.current = false;
+        poll(); // immediate poll on resume
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      if (pollTimer.current) clearInterval(pollTimer.current as unknown as ReturnType<typeof setInterval>);
+      if (tokenRefreshTimer.current) clearTimeout(tokenRefreshTimer.current);
+      if (rateLimitCountdown.current) clearInterval(rateLimitCountdown.current);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      isMounted.current = false;
+    };
+  }, [bbox, poll]);
+
+  return state;
+}

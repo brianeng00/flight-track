@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="40" height="40">
+  <!-- Aircraft icon pointing NORTH (upward). Do NOT rotate this SVG.
+       MapLibre icon-rotate maps 1:1 to OpenSky true_track (clockwise from north). -->
+  <g transform="translate(20, 20)">
+    <!-- Fuselage -->
+    <ellipse rx="3" ry="13" fill="white" stroke="none"/>
+    <!-- Nose (top = north) -->
+    <polygon points="0,-16 -3,-10 3,-10" fill="white"/>
+    <!-- Main wings -->
+    <polygon points="0,-4 -14,6 -12,8 0,2 12,8 14,6" fill="white"/>
+    <!-- Tail fins -->
+    <polygon points="0,9 -7,15 -6,16 0,12 6,16 7,15" fill="white"/>
+  </g>
+</svg>
