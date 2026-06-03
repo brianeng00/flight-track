@@ -25,7 +25,10 @@ const VERTICAL_ICONS: Record<string, string> = {
  * It is serialised to an HTML string and injected into the popup DOM,
  * so it must be a pure render — no event handlers, no state.
  */
-export function flightPopupHTML(flight: Flight): string {
+export function flightPopupHTML(
+  flight: Flight,
+  trail?: { loading: boolean; durationMinutes: number | null },
+): string {
   const { callsign, status, altitudeFt, speedKt, distanceNm, verticalRateMs, originCountry } = flight;
 
   const badge = STATUS_LABELS[status];
@@ -36,6 +39,14 @@ export function flightPopupHTML(flight: Flight): string {
     verticalRateMs !== 0
       ? `${verticalRateMs > 0 ? '+' : ''}${Math.round(verticalRateMs * 196.85)} fpm`
       : '—';
+
+  const trailStatus = !trail
+    ? ''
+    : trail.loading
+      ? `<div class="flight-popup__trail-status">🛤 Trail loading…</div>`
+      : trail.durationMinutes != null
+        ? `<div class="flight-popup__trail-status">🛤 Trail: ${trail.durationMinutes} min</div>`
+        : `<div class="flight-popup__trail-status">🛤 Trail active</div>`;
 
   return `
     <div class="flight-popup">
@@ -67,9 +78,7 @@ export function flightPopupHTML(flight: Flight): string {
         </div>
         ` : ''}
       </div>
-      <button class="flight-popup__trail-btn" disabled title="Coming in v2">
-        <span>🛤</span> Show flight trail
-      </button>
+      ${trailStatus}
     </div>
   `;
 }

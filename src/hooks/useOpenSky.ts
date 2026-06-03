@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { BoundingBox, Flight, OpenSkyTokenResponse } from '../types';
+import type { BoundingBox, Flight, OpenSkyTokenResponse, RawStateVector } from '../types';
 import { parseStateVector } from '../lib/opensky';
 import { deadReckon } from '../lib/deadReckon';
 import { sortByDistance } from '../lib/geo';
@@ -21,9 +21,11 @@ import { sortByDistance } from '../lib/geo';
  *   60s interval × 24h = 1,440 credits/day (free tier: 4,000)
  */
 
-const OPENSKY_BASE = 'https://opensky-network.org/api';
-const TOKEN_URL = 'https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token';
-const POLL_INTERVAL_MS = 60_000;
+// Requests route through Vite's dev proxy (or `vite preview` proxy) to avoid
+// CORS — OpenSky's API and OAuth2 token endpoint do not allow browser origins.
+const OPENSKY_BASE = '/opensky-api';
+const TOKEN_URL = '/opensky-token';
+const POLL_INTERVAL_MS = 15_000;
 const DR_INTERVAL_MS = 100; // 10fps dead reckoning
 const MAX_BACKOFF_MS = 300_000; // 5 minutes
 
@@ -181,12 +183,24 @@ export function useOpenSky(
       const data = await res.json();
       const rawStates: unknown[] = data.states ?? [];
 
-      const flights = rawStates
-        .map(s => parseStateVector(s as Parameters<typeof parseStateVector>[0], userLat, userLng))
+      // Deduplicate raw vectors by icao24 before parsing, keeping the entry
+      // with the highest last_contact timestamp (index 4). OpenSky can return
+      // the same aircraft from multiple ground stations in one response.
+      const byIcao = new Map<string, RawStateVector>();
+      for (const sv of rawStates) {
+        const s = sv as RawStateVector;
+        const existing = byIcao.get(s[0]);
+        if (!existing || (existing[4] ?? 0) < (s[4] ?? 0)) {
+          byIcao.set(s[0], s);
+        }
+      }
+
+      const unique = [...byIcao.values()]
+        .map(s => parseStateVector(s, userLat, userLng))
         .filter((f): f is Flight => f !== null)
         .filter(f => f.distanceNm <= radiusNm);
 
-      const sorted = sortByDistance(flights);
+      const sorted = sortByDistance(unique);
 
       if (isMounted.current) {
         lastPollData.current = { flights: sorted, pollTime: Date.now() };
@@ -209,6 +223,16 @@ export function useOpenSky(
       }
     }
   }, [bbox, getToken, userLat, userLng, radiusNm]);
+
+  /**
+   * Trigger an out-of-schedule poll — used by MapView when dead-reckoning
+   * deviation exceeds threshold.  Debounced: no-op if last poll was < 8s ago.
+   */
+  const triggerPoll = useCallback(() => {
+    if (isPollingPaused.current || !isMounted.current) return;
+    if (Date.now() - lastPollData.current.pollTime < 8_000) return;
+    poll();
+  }, [poll]);
 
   // ── Dead reckoning (10fps position interpolation) ─────────────────────────
 
@@ -261,5 +285,5 @@ export function useOpenSky(
     };
   }, [bbox, poll]);
 
-  return state;
+  return { ...state, getToken, triggerPoll };
 }

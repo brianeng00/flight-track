@@ -80,3 +80,17 @@ export interface AppError {
   message: string;
   retryAfterMs?: number;
 }
+
+/** A single lat/lng waypoint from an OpenSky flight track */
+export interface TrailWaypoint {
+  lat: number;
+  lng: number;
+}
+
+/** State returned by useFlightTrail */
+export interface FlightTrailState {
+  waypoints: TrailWaypoint[];
+  durationMinutes: number | null;
+  loading: boolean;
+  error: string | null;
+}

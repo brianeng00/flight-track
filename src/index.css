@@ -110,9 +110,19 @@ html, body, #root {
   min-width: 220px;
 }
 
-.maplibregl-popup-tip {
+/* Arrow tip — correct color for every anchor direction MapLibre may choose */
+.maplibregl-popup-anchor-bottom     .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-left  .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
   border-top-color: var(--bg-elevated) !important;
 }
+.maplibregl-popup-anchor-top      .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-left   .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-right  .maplibregl-popup-tip {
+  border-bottom-color: var(--bg-elevated) !important;
+}
+.maplibregl-popup-anchor-left  .maplibregl-popup-tip { border-right-color: var(--bg-elevated) !important; }
+.maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color:  var(--bg-elevated) !important; }
 
 .maplibregl-popup-close-button {
   color: var(--text-secondary) !important;
@@ -141,6 +151,7 @@ html, body, #root {
 
 .app__body {
   flex: 1;
+  min-height: 0; /* prevent flex-column overflow — required for inner flex:1 height to resolve */
   display: flex;
   overflow: hidden;
   position: relative;
@@ -269,15 +280,16 @@ html, body, #root {
 
 /* ── MapView ────────────────────────────────────────────────────────────── */
 
+/* MapLibre mounts directly on this div — it must be a block with explicit
+   dimensions so MapLibre can measure offsetWidth/offsetHeight on init.
+   flex:1 gives it the remaining width; align-items:stretch (default) in the
+   parent row-flex gives it full height.  overflow:hidden clips tile bleed. */
 .map-container {
   flex: 1;
   position: relative;
   overflow: hidden;
-}
-
-.map-canvas {
-  position: absolute;
-  inset: 0;
+  /* Fallback explicit height in case flex stretch doesn't propagate */
+  min-height: 0;
 }
 
 /* ── Map status bar ─────────────────────────────────────────────────────── */
@@ -661,21 +673,12 @@ html, body, #root {
   color: var(--text-primary);
 }
 
-.flight-popup__trail-btn {
-  width: 100%;
-  background: var(--bg-hover);
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-sm);
+.flight-popup__trail-status {
+  font-size: 11px;
   color: var(--text-muted);
-  font-size: 12px;
-  font-family: var(--font-sans);
-  padding: 7px 12px;
-  cursor: not-allowed;
   text-align: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
+  padding: 6px 0 2px;
+  letter-spacing: 0.3px;
 }
 
 /* ── Loading overlay ────────────────────────────────────────────────────── */

@@ -24,7 +24,7 @@ export default function App() {
   );
 
   // ── Flight data ───────────────────────────────────────────────────────────
-  const { flights, loading, error, lastUpdated, rateLimitRetryIn } = useOpenSky(
+  const { flights, loading, error, lastUpdated, rateLimitRetryIn, getToken, triggerPoll } = useOpenSky(
     bbox,
     location?.lat ?? 0,
     location?.lng ?? 0,
@@ -57,6 +57,9 @@ export default function App() {
       />
 
       <div className="app__body">
+        {/* getToken is passed so MapView can own the trail hook directly —
+            avoids a prop-chain timing issue where state updates in useFlightTrail
+            don't propagate reliably through App → MapView props. */}
         <MapView
           flights={flights}
           location={location}
@@ -67,6 +70,8 @@ export default function App() {
           rateLimitRetryIn={rateLimitRetryIn}
           selectedIcao={selectedIcao}
           onFlightSelect={handleFlightSelect}
+          getToken={getToken}
+          triggerPoll={triggerPoll}
         />
 
         {/* Desktop sidebar */}
