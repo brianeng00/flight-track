@@ -4,10 +4,10 @@ import type { MapMode } from '../types';
 /**
  * Map tile styles for each mode.
  *
- * Street  → CARTO Dark Matter raster tiles (no key, dark theme, no complex
- *            vector filter expressions — OpenFreeMap Liberty has null-type
- *            errors in MapLibre because the tile data has nulls where the
- *            style's filter expressions expect numbers).
+ * Street  → Esri World Dark Gray Canvas raster tiles (no key, dark theme).
+ *            Raster avoids the null-type filter errors MapLibre throws on
+ *            OpenFreeMap Liberty vector tiles. CARTO's basemap CDN was used
+ *            previously but now stamps "API KEY REQUIRED" onto free tiles.
  * Satellite/Terrain → MapTiler (requires VITE_MAPTILER_KEY in .env)
  *
  * Aircraft icon convention (CRITICAL):
@@ -19,31 +19,37 @@ import type { MapMode } from '../types';
 const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_KEY as string | undefined;
 
 /**
- * CARTO Dark Matter raster tiles.
- * Free, no API key, dark theme, globally cached CDN, permissive CORS.
+ * Esri World Dark Gray Canvas raster tiles.
+ * Free, no API key, dark theme, global CDN, permissive CORS.
+ * Note the {z}/{y}/{x} order — Esri puts row before column, unlike XYZ schemes.
  */
 const STREET_STYLE: StyleSpecification = {
   version: 8,
   sources: {
-    'carto-dark': {
+    'esri-dark': {
       type: 'raster',
       tiles: [
-        'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        'https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
       ],
       tileSize: 256,
-      maxzoom: 19,
+      maxzoom: 16,
       attribution:
-        '© <a href="https://carto.com/attributions">CARTO</a> | © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        '© <a href="https://www.esri.com/">Esri</a> | © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     },
   },
   layers: [
     {
-      id: 'carto-dark-tiles',
+      id: 'esri-dark-tiles',
       type: 'raster',
-      source: 'carto-dark',
+      source: 'esri-dark',
+      paint: {
+        // Esri's "Dark Gray" canvas is really mid-grey. Pull the brightness
+        // range down and desaturate so aircraft icons stay high-contrast
+        // against it and the basemap matches the dark app chrome.
+        'raster-brightness-max': 0.42,
+        'raster-saturation': -0.35,
+        'raster-contrast': 0.12,
+      },
     },
   ],
 };

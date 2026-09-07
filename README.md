@@ -2,6 +2,8 @@
 
 A real-time flight tracker web app built with React, TypeScript, and MapLibre GL JS. Shows live aircraft overhead based on your current location using the OpenSky Network API, with smooth position interpolation between data polls, clickable flight details, and historical flight trail overlays.
 
+![FlightTrack tracking 354 aircraft over the New York metro area](docs/images/hero.png)
+
 ---
 
 ## Features
@@ -10,7 +12,7 @@ A real-time flight tracker web app built with React, TypeScript, and MapLibre GL
 - **Dead reckoning** — interpolates aircraft positions at 10fps between polls using heading and ground speed so icons move smoothly rather than jumping
 - **Flight trails** — click any aircraft to see its recent flight path drawn on the map, auto-refreshed every 10 seconds
 - **Adaptive polling** — if a dead-reckoned position diverges significantly from the most recent trail waypoint (>2 nm excess), an early poll is triggered automatically
-- **Three map modes** — Street (CARTO Dark Matter, no key required), Satellite, and Terrain (MapTiler, optional key)
+- **Three map modes** — Street (Esri Dark Gray Canvas, no key required), Satellite, and Terrain (MapTiler, optional key)
 - **Flight details popup** — callsign, altitude, speed, vertical rate, distance, and flight phase on click
 - **Nearby flights panel** — scrollable sidebar (desktop) or bottom drawer (mobile) listing all flights in radius, sorted by distance
 - **Radius control** — adjustable search radius from 25 to 200 nautical miles
@@ -21,13 +23,39 @@ A real-time flight tracker web app built with React, TypeScript, and MapLibre GL
 
 ---
 
+## Screenshots
+
+### Flight details and trail
+
+Click any aircraft — or any card in the sidebar — to open its detail popup and draw its recent track. The trail refreshes every 10 seconds as the aircraft moves.
+
+![Selected flight showing an altitude, speed, distance and vertical-rate popup alongside its blue flight trail](docs/images/flight-detail.png)
+
+### Map modes
+
+Street mode needs no API key. Satellite and Terrain unlock when `VITE_MAPTILER_KEY` is set — without it, those buttons render disabled.
+
+| Satellite | Terrain |
+|---|---|
+| ![Satellite imagery of the New York metro area with aircraft icons overlaid](docs/images/satellite.jpg) | ![Topographic terrain map of the New York metro area with aircraft icons overlaid](docs/images/terrain.jpg) |
+
+### Nearby flights panel and mobile layout
+
+The sidebar lists every aircraft in radius sorted by distance, colour-coded by flight phase. Below 768 px it becomes a pull-up bottom drawer.
+
+| Sidebar | Mobile |
+|---|---|
+| ![Sidebar listing aircraft by callsign, altitude, speed, distance and status badge](docs/images/flight-panel.png) | ![Mobile layout with full-screen map and a pull-up Nearby Flights drawer](docs/images/mobile.png) |
+
+---
+
 ## Tech Stack
 
 | Layer | Choice | Notes |
 |---|---|---|
 | Framework | Vite + React 19 + TypeScript 6 | |
 | Map | MapLibre GL JS 4 | Open-source Mapbox fork, WebGL |
-| Street tiles | CARTO Dark Matter | No API key required |
+| Street tiles | Esri World Dark Gray Canvas | No API key required |
 | Satellite / Terrain tiles | MapTiler | Free tier, key required |
 | Flight data | OpenSky Network REST API | OAuth2, 4,000 credits/day free tier |
 | Unit tests | Vitest + React Testing Library | jsdom environment |
@@ -211,11 +239,16 @@ flight-track/
 │   │   └── FlightPopup/          # flightPopupHTML() serialised to string for MapLibre popup
 │   │
 │   └── test/                     # Unit and component tests
+│       ├── setup.ts              # Loads @testing-library/jest-dom matchers
 │       ├── hooks/
 │       ├── lib/
 │       └── components/
 │
 ├── e2e/                          # Playwright end-to-end tests
+├── docs/
+│   └── images/                   # README screenshots
+├── .claude/
+│   └── launch.json               # Dev server config for the Claude Code preview pane
 ├── .env.example                  # Environment variable template
 ├── .env                          # Your local keys — gitignored
 ├── vite.config.ts                # Vite build config + Vitest config + dev/preview proxy
@@ -233,7 +266,7 @@ flight-track/
 | `npm run dev` | Start dev server at `localhost:5173` with HMR and API proxy |
 | `npm run build` | Type-check then build optimised production bundle to `dist/` |
 | `npm run preview` | Serve the production build locally (proxy included) |
-| `npm run lint` | Run ESLint across all source files |
+| `npm run lint` | Run ESLint across all source files (see [Known Limitations](#known-limitations) — currently reports pre-existing errors) |
 | `npm test` | Run unit tests in watch mode |
 | `npm run test:run` | Run unit tests once (CI mode) |
 | `npm run test:coverage` | Run unit tests with V8 coverage report |
@@ -256,41 +289,19 @@ flight-track/
 
 ### Setup
 
-Add a `test` block to `vite.config.ts` if not already present:
+Everything is wired up already — `npm install` is all you need:
 
-```ts
-export default defineConfig({
-  plugins: [react()],
-  test: {
-    environment: 'jsdom',
-    globals: true,
-    setupFiles: ['./src/test/setup.ts'],
-    coverage: {
-      provider: 'v8',
-      include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/main.tsx', 'src/test/**'],
-    },
-  },
-  // ...proxy config unchanged
-})
+- **Vitest config** lives in the `test` block of `vite.config.ts` (jsdom environment, globals enabled, coverage via V8)
+- **`src/test/setup.ts`** loads the jest-dom matchers globally
+- **Test scripts** are defined in `package.json`
+
+Test discovery is scoped to `src/test/**/*.{test,spec}.{ts,tsx}`. Playwright needs its browser binaries once:
+
+```bash
+npx playwright install
 ```
 
-Create `src/test/setup.ts` to load jest-dom matchers globally:
-
-```ts
-import '@testing-library/jest-dom'
-```
-
-Add these scripts to `package.json`:
-
-```json
-"scripts": {
-  "test":           "vitest",
-  "test:run":       "vitest run",
-  "test:coverage":  "vitest run --coverage",
-  "test:e2e":       "playwright test"
-}
-```
+> **Current state:** the harness runs and the config is complete, but no test files have been written yet — `npm run test:run` passes with `--passWithNoTests`. The tables below are the intended coverage map for filling that gap.
 
 ### Running Unit Tests
 
@@ -480,7 +491,7 @@ Layers are added in this order (bottom to top):
 
 | Layer ID | Type | Source | Description |
 |---|---|---|---|
-| `carto-dark-tiles` | raster | CARTO CDN | Base map tiles (street mode) |
+| `esri-dark-tiles` | raster | Esri ArcGIS CDN | Base map tiles (street mode), darkened via raster paint properties |
 | `user-pulse` | circle | `user-location` | Translucent pulsing ring around the user dot |
 | `user-dot` | circle | `user-location` | Solid blue user location dot |
 | `flight-trail-layer` | line | `flight-trail` | Dashed blue trail for the selected aircraft |
@@ -539,6 +550,10 @@ npm run build
 - **Dead reckoning diverges on manoeuvres** — turns, holding patterns, and steep climbs cause the icon to drift from reality until the next poll. This is acceptable for v1.
 - **Trail requires ADS-B history** — military aircraft, some general aviation, and aircraft with equipment issues have no track data in OpenSky. The trail simply will not appear.
 - **HTTPS required for GPS in production** — `navigator.geolocation` requires a secure context. The app falls back to IP-based location on plain HTTP.
+- **Basemap providers change their terms** — street mode originally used CARTO Dark Matter, which now stamps "API KEY REQUIRED" across its free tiles. It was swapped for Esri World Dark Gray Canvas, darkened via MapLibre raster paint properties. If Esri follows suit, `STREET_STYLE` in `src/lib/mapStyles.ts` is the single place to change.
+- **No test files yet** — the Vitest and Playwright harnesses are configured and runnable, but the suites described under [Testing](#testing) have not been written.
+- **`npm run lint` reports 10 errors, 2 warnings** — all from the React Compiler rules in `eslint-plugin-react-hooks` v7 (synchronous `setState` inside effects, `useCallback` referenced before declaration). `npm run build` and `tsc --noEmit` are both clean; the app runs correctly. These are real code-health items in `useOpenSky.ts` and `MapView/index.tsx` worth addressing, not lint misconfiguration.
+- **`src/hooks/useFlightTrail.ts` is unused** — trail fetching was moved inline into `MapView` to fix a prop-chain timing bug. The file is dead code and safe to delete.
 
 ---
 

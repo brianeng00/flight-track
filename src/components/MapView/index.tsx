@@ -364,7 +364,10 @@ export function MapView({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    if (!map) return;
+    // Gate on the source existing, not map.isStyleLoaded(). A single failing
+    // basemap tile leaves isStyleLoaded() false indefinitely, which would
+    // otherwise stop aircraft from ever being drawn.
     const source = map.getSource(FLIGHTS_SOURCE) as maplibregl.GeoJSONSource | undefined;
     source?.setData(buildFlightGeoJSON(flights));
   }, [flights]);
