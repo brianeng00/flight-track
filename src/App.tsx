@@ -57,9 +57,9 @@ export default function App() {
       />
 
       <div className="app__body">
-        {/* getToken is passed so MapView can own the trail hook directly —
-            avoids a prop-chain timing issue where state updates in useFlightTrail
-            don't propagate reliably through App → MapView props. */}
+        {/* getToken is passed so MapView can fetch trails itself. Routing trail
+            state back up through App props raced with the 10fps position
+            updates, so the fetch lives next to the map source it writes to. */}
         <MapView
           flights={flights}
           location={location}

@@ -136,95 +136,23 @@ export function MapView({
   // Always-current snapshot of flights — lets async fetchTrail read the latest
   // dead-reckoned position without being a dep of the trail effect.
   const flightsRef = useRef<Flight[]>(flights);
-  const [webglError, setWebglError] = useState(false);
-
-  // ── Initialise map ────────────────────────────────────────────────────────
+  // Popup HTML is rebuilt from a ref rather than from trailLoading/
+  // trailDurationMinutes directly, so the popup-creating effects don't have to
+  // re-run (and destroy the live popup) every time trail status changes.
+  const trailStateRef = useRef<{ loading: boolean; durationMinutes: number | null }>({
+    loading: false,
+    durationMinutes: null,
+  });
+  // Probed once during render — hasWebGL() only creates a throwaway canvas.
+  const [webglError, setWebglError] = useState(() => !hasWebGL());
+  // Drives the "Xs ago" label. Date.now() cannot be called during render, so a
+  // ticker supplies the clock. 0 renders as "just now", which is correct at mount.
+  const [now, setNow] = useState(0);
 
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
-
-    if (!hasWebGL()) {
-      setWebglError(true);
-      return;
-    }
-
-    let map: maplibregl.Map;
-    try {
-      map = new maplibregl.Map({
-        container: containerRef.current,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        style: MAP_STYLES.street as any,
-        center: [-74.006, 40.7128], // NYC default, updated when location resolves
-        zoom: 8,
-        attributionControl: false,
-      });
-    } catch (err) {
-      console.warn('[MapView] Failed to initialise map:', err);
-      setWebglError(true);
-      return;
-    }
-
-    // Attribution (compact)
-    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
-
-    // Navigation controls
-    map.addControl(
-      new maplibregl.NavigationControl({ showCompass: true, showZoom: true }),
-      'bottom-right',
-    );
-
-    map.on('load', () => {
-      // Ensure the canvas matches the container's actual pixel dimensions.
-      // Without this, a flexbox container measured at init might differ.
-      map.resize();
-
-      // ── Aircraft icon ─────────────────────────────────────────────────────
-      const img = new Image(40, 40);
-      img.onload = () => {
-        if (!map.hasImage('airplane-icon')) {
-          map.addImage('airplane-icon', img, { sdf: true });
-        }
-        iconLoaded.current = true;
-        setupLayers(map);
-      };
-      img.onerror = () => {
-        // fallback: continue without icon
-        iconLoaded.current = false;
-        setupLayers(map);
-      };
-      img.src = '/airplane-north.svg';
-    });
-
-    // ── WebGL context loss recovery ───────────────────────────────────────
-    // Firefox and some systems reclaim GPU contexts aggressively.
-    // Prevent the default "context lost = dead" behaviour and force a repaint
-    // when the GPU gives the context back.
-    const canvas = map.getCanvas();
-    const onContextLost = (e: Event) => {
-      e.preventDefault(); // allow the browser to restore the context
-    };
-    const onContextRestored = () => {
-      // MapLibre reinitialises internally; nudge it to repaint immediately.
-      setTimeout(() => map.triggerRepaint(), 100);
-    };
-    canvas.addEventListener('webglcontextlost', onContextLost);
-    canvas.addEventListener('webglcontextrestored', onContextRestored);
-
-    mapRef.current = map;
-
-    return () => {
-      canvas.removeEventListener('webglcontextlost', onContextLost);
-      canvas.removeEventListener('webglcontextrestored', onContextRestored);
-      popupRef.current?.remove();
-      map.remove();
-      mapRef.current = null;
-      iconLoaded.current = false;
-      initialCenterSet.current = false;
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Keep flightsRef current so async fetchTrail can read latest positions
-  useEffect(() => { flightsRef.current = flights; }, [flights]);
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // ── Setup sources and layers ──────────────────────────────────────────────
 
@@ -360,6 +288,93 @@ export function MapView({
     }
   }, []);
 
+  // ── Initialise map ────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (webglError || !containerRef.current || mapRef.current) return;
+
+    let map: maplibregl.Map;
+    try {
+      map = new maplibregl.Map({
+        container: containerRef.current,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        style: MAP_STYLES.street as any,
+        center: [-74.006, 40.7128], // NYC default, updated when location resolves
+        zoom: 8,
+        attributionControl: false,
+      });
+    } catch (err) {
+      // hasWebGL() passed but MapLibre still failed (driver quirk, blocked
+      // context). Deferred so the fallback render is a fresh pass rather than
+      // a synchronous cascade out of this effect.
+      console.warn('[MapView] Failed to initialise map:', err);
+      queueMicrotask(() => setWebglError(true));
+      return;
+    }
+
+    // Attribution (compact)
+    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+
+    // Navigation controls
+    map.addControl(
+      new maplibregl.NavigationControl({ showCompass: true, showZoom: true }),
+      'bottom-right',
+    );
+
+    map.on('load', () => {
+      // Ensure the canvas matches the container's actual pixel dimensions.
+      // Without this, a flexbox container measured at init might differ.
+      map.resize();
+
+      // ── Aircraft icon ─────────────────────────────────────────────────────
+      const img = new Image(40, 40);
+      img.onload = () => {
+        if (!map.hasImage('airplane-icon')) {
+          map.addImage('airplane-icon', img, { sdf: true });
+        }
+        iconLoaded.current = true;
+        setupLayers(map);
+      };
+      img.onerror = () => {
+        // fallback: continue without icon
+        iconLoaded.current = false;
+        setupLayers(map);
+      };
+      img.src = '/airplane-north.svg';
+    });
+
+    // ── WebGL context loss recovery ───────────────────────────────────────
+    // Firefox and some systems reclaim GPU contexts aggressively.
+    // Prevent the default "context lost = dead" behaviour and force a repaint
+    // when the GPU gives the context back.
+    const canvas = map.getCanvas();
+    const onContextLost = (e: Event) => {
+      e.preventDefault(); // allow the browser to restore the context
+    };
+    const onContextRestored = () => {
+      // MapLibre reinitialises internally; nudge it to repaint immediately.
+      setTimeout(() => map.triggerRepaint(), 100);
+    };
+    canvas.addEventListener('webglcontextlost', onContextLost);
+    canvas.addEventListener('webglcontextrestored', onContextRestored);
+
+    mapRef.current = map;
+
+    return () => {
+      canvas.removeEventListener('webglcontextlost', onContextLost);
+      canvas.removeEventListener('webglcontextrestored', onContextRestored);
+      popupRef.current?.remove();
+      map.remove();
+      mapRef.current = null;
+      iconLoaded.current = false;
+      initialCenterSet.current = false;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep flightsRef current so async fetchTrail can read latest positions
+  useEffect(() => { flightsRef.current = flights; }, [flights]);
+
+
   // ── Update flight positions (10fps from dead reckoning) ───────────────────
 
   useEffect(() => {
@@ -405,15 +420,14 @@ export function MapView({
   // feed the popup HTML, not the map source.
 
   useEffect(() => {
-    // Clear trail when nothing is selected
+    // Clear trail when nothing is selected. No setState here — the derived
+    // values below already read as "not loading" once selectedIcao is null.
     if (!selectedIcao) {
       trailFetchingForRef.current = null;
       currentTrailDataRef.current = null;
       pendingTrailRef.current = null;
       const src = mapRef.current?.getSource(TRAIL_SOURCE) as maplibregl.GeoJSONSource | undefined;
       src?.setData(EMPTY_TRAIL);
-      setTrailLoading(false);
-      setTrailDurationMinutes(null);
       return;
     }
 
@@ -424,10 +438,15 @@ export function MapView({
     trailFetchingForRef.current = selectedIcao;
     const icao = selectedIcao;
 
-    setTrailLoading(true);
-    setTrailDurationMinutes(null);
-
-    const fetchTrail = async () => {
+    // `isInitial` marks the fetch triggered by selecting this aircraft. Only
+    // that one shows the loading state — the 10s refreshes must not make the
+    // popup flicker back to "Trail loading…". Setting it inside the async body
+    // also keeps setState out of the effect body.
+    const fetchTrail = async (isInitial: boolean) => {
+      if (isInitial) {
+        setTrailLoading(true);
+        setTrailDurationMinutes(null);
+      }
       try {
         const token = await getToken();
         const headers: HeadersInit = {};
@@ -503,19 +522,22 @@ export function MapView({
       }
     };
 
-    // Initial fetch
-    fetchTrail();
+    void fetchTrail(true);
 
-    // Re-fetch every 60 s so the trail extends as the aircraft moves
-    const interval = setInterval(fetchTrail, 10_000);
+    // Re-fetch every 10 s so the trail extends as the aircraft moves
+    const interval = setInterval(() => void fetchTrail(false), 10_000);
     return () => clearInterval(interval);
-  }, [selectedIcao, getToken]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedIcao, getToken, triggerPoll]);
 
   // ── Trail: refresh popup HTML when trail loading state changes ────────────
 
+  // Reads flights through the ref on purpose. Depending on `flights` here would
+  // re-run setHTML at 10fps, replacing the close button between mousedown and
+  // mouseup so clicks never complete.
   useEffect(() => {
+    trailStateRef.current = { loading: trailLoading, durationMinutes: trailDurationMinutes };
     if (!selectedIcao || !popupRef.current) return;
-    const flight = flights.find(f => f.icao24 === selectedIcao);
+    const flight = flightsRef.current.find(f => f.icao24 === selectedIcao);
     if (!flight) return;
     popupRef.current.setHTML(
       flightPopupHTML(flight, { loading: trailLoading, durationMinutes: trailDurationMinutes }),
@@ -536,10 +558,11 @@ export function MapView({
     // Empty string means MapTiler key is absent — button is disabled, but guard anyway
     if (!style || style === '') return;
 
-    // Snapshot current data before style swap
+    // Snapshot current data before style swap. flightsRef, not flights — this
+    // effect must fire only on mapMode changes, never on position updates.
     const flightsSource = map.getSource(FLIGHTS_SOURCE) as maplibregl.GeoJSONSource | undefined;
     const userSource = map.getSource(USER_SOURCE) as maplibregl.GeoJSONSource | undefined;
-    const currentFlightsData = flightsSource ? buildFlightGeoJSON(flights) : null;
+    const currentFlightsData = flightsSource ? buildFlightGeoJSON(flightsRef.current) : null;
     const currentUserData = location && userSource ? buildUserGeoJSON(location) : null;
     const currentTrailData = currentTrailDataRef.current;
 
@@ -613,7 +636,7 @@ export function MapView({
       popupRef.current?.remove();
       popupRef.current = new maplibregl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '280px', offset: 18 })
         .setLngLat(coords)
-        .setHTML(flightPopupHTML(flight, { loading: trailLoading, durationMinutes: trailDurationMinutes }))
+        .setHTML(flightPopupHTML(flight, trailStateRef.current))
         .addTo(map);
 
       const closeHandler = () => { onFlightSelect(null); };
@@ -637,11 +660,14 @@ export function MapView({
 
   // ── Fly to selected flight (from panel click) ─────────────────────────────
 
+  // Deliberately keyed on selectedIcao alone. flights and trail status are read
+  // through refs so a new popup is built only when the selection changes, never
+  // on a position tick or a trail-status update.
   useEffect(() => {
     if (!selectedIcao) return;
     const map = mapRef.current;
     if (!map) return;
-    const flight = flights.find(f => f.icao24 === selectedIcao);
+    const flight = flightsRef.current.find(f => f.icao24 === selectedIcao);
     if (!flight) return;
 
     map.flyTo({ center: [flight.lng, flight.lat], zoom: Math.max(map.getZoom(), 9), duration: 800 });
@@ -654,20 +680,22 @@ export function MapView({
     popupRef.current?.remove();
     popupRef.current = new maplibregl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '280px', offset: 18 })
       .setLngLat([flight.lng, flight.lat])
-      .setHTML(flightPopupHTML(flight, { loading: trailLoading, durationMinutes: trailDurationMinutes }))
+      .setHTML(flightPopupHTML(flight, trailStateRef.current))
       .addTo(map);
 
     const closeHandler = () => { onFlightSelect(null); };
     popupCloseHandlerRef.current = closeHandler;
     popupRef.current.on('close', closeHandler);
-  }, [selectedIcao]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedIcao, onFlightSelect]);
 
   // ── Status bar content ────────────────────────────────────────────────────
 
   const statusPills: Array<{ text: string; type: 'default' | 'warn' | 'error' }> = [];
 
   if (lastUpdated) {
-    const delta = Math.round((Date.now() - new Date(lastUpdated).getTime()) / 1000);
+    // `now` starts at 0 and is advanced by the 1s ticker, so before the first
+    // tick delta is negative and the label reads "just now" — which is accurate.
+    const delta = Math.round((now - new Date(lastUpdated).getTime()) / 1000);
     const label = delta < 5 ? 'just now' : delta < 60 ? `${delta}s ago` : `${Math.round(delta / 60)}m ago`;
     statusPills.push({ text: `${flights.length} flights · ${label}`, type: 'default' });
   } else if (loading) {

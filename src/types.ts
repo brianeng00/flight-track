@@ -86,11 +86,3 @@ export interface TrailWaypoint {
   lat: number;
   lng: number;
 }
-
-/** State returned by useFlightTrail */
-export interface FlightTrailState {
-  waypoints: TrailWaypoint[];
-  durationMinutes: number | null;
-  loading: boolean;
-  error: string | null;
-}

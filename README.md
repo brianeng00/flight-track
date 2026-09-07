@@ -236,7 +236,8 @@ flight-track/
 │   │   ├── MapView/              # MapLibre instance, all layers, trail fetch, popup lifecycle
 │   │   ├── FlightPanel/          # Desktop sidebar + mobile bottom drawer, radius slider
 │   │   ├── FlightCard/           # Single flight row: icon, callsign, altitude, speed, distance
-│   │   └── FlightPopup/          # flightPopupHTML() serialised to string for MapLibre popup
+│   │   └── FlightPopup/          # index.ts — flightPopupHTML() builds the popup markup
+│   │                             # as a string (MapLibre takes HTML, not React nodes)
 │   │
 │   └── test/                     # Unit and component tests
 │       ├── setup.ts              # Loads @testing-library/jest-dom matchers
@@ -266,7 +267,7 @@ flight-track/
 | `npm run dev` | Start dev server at `localhost:5173` with HMR and API proxy |
 | `npm run build` | Type-check then build optimised production bundle to `dist/` |
 | `npm run preview` | Serve the production build locally (proxy included) |
-| `npm run lint` | Run ESLint across all source files (see [Known Limitations](#known-limitations) — currently reports pre-existing errors) |
+| `npm run lint` | Run ESLint across all source files (clean — zero errors, zero warnings) |
 | `npm test` | Run unit tests in watch mode |
 | `npm run test:run` | Run unit tests once (CI mode) |
 | `npm run test:coverage` | Run unit tests with V8 coverage report |
@@ -552,8 +553,6 @@ npm run build
 - **HTTPS required for GPS in production** — `navigator.geolocation` requires a secure context. The app falls back to IP-based location on plain HTTP.
 - **Basemap providers change their terms** — street mode originally used CARTO Dark Matter, which now stamps "API KEY REQUIRED" across its free tiles. It was swapped for Esri World Dark Gray Canvas, darkened via MapLibre raster paint properties. If Esri follows suit, `STREET_STYLE` in `src/lib/mapStyles.ts` is the single place to change.
 - **No test files yet** — the Vitest and Playwright harnesses are configured and runnable, but the suites described under [Testing](#testing) have not been written.
-- **`npm run lint` reports 10 errors, 2 warnings** — all from the React Compiler rules in `eslint-plugin-react-hooks` v7 (synchronous `setState` inside effects, `useCallback` referenced before declaration). `npm run build` and `tsc --noEmit` are both clean; the app runs correctly. These are real code-health items in `useOpenSky.ts` and `MapView/index.tsx` worth addressing, not lint misconfiguration.
-- **`src/hooks/useFlightTrail.ts` is unused** — trail fetching was moved inline into `MapView` to fix a prop-chain timing bug. The file is dead code and safe to delete.
 
 ---
 

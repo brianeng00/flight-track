@@ -79,6 +79,14 @@ export function useOpenSky(
 
   // ── Token management ──────────────────────────────────────────────────────
 
+  // fetchToken reschedules itself for the next proactive refresh, and poll()
+  // reschedules itself after a 429 backoff. Both need to call the *current*
+  // instance from inside a timer, which a direct self-reference cannot express
+  // (the callback would capture itself before it is declared). These refs hold
+  // the latest instance; effects below keep them current.
+  const fetchTokenRef = useRef<(() => Promise<string | null>) | null>(null);
+  const pollRef = useRef<(() => Promise<void>) | null>(null);
+
   const fetchToken = useCallback(async (): Promise<string | null> => {
     if (!USE_AUTH) return null;
     try {
@@ -103,7 +111,7 @@ export function useOpenSky(
       const refreshIn = Math.max(0, data.expires_in * 1000 - 60_000);
       if (tokenRefreshTimer.current) clearTimeout(tokenRefreshTimer.current);
       tokenRefreshTimer.current = setTimeout(() => {
-        if (isMounted.current) fetchToken();
+        if (isMounted.current) void fetchTokenRef.current?.();
       }, refreshIn);
 
       return data.access_token;
@@ -125,6 +133,10 @@ export function useOpenSky(
 
   const poll = useCallback(async () => {
     if (!bbox || isPollingPaused.current || !isMounted.current) return;
+
+    // Show the spinner on the very first fetch. Done here rather than in the
+    // mount effect so no setState happens synchronously in an effect body.
+    setState(s => (s.flights.length === 0 && !s.loading ? { ...s, loading: true } : s));
 
     try {
       const token = await getToken();
@@ -152,9 +164,9 @@ export function useOpenSky(
         pollTimer.current = setTimeout(
           () => {
             if (isMounted.current) {
-              poll();
+              void pollRef.current?.();
               // Re-establish regular interval after recovery
-              pollTimer.current = setInterval(poll, POLL_INTERVAL_MS);
+              pollTimer.current = setInterval(() => void pollRef.current?.(), POLL_INTERVAL_MS);
             }
           },
           backoffMs.current,
@@ -231,8 +243,14 @@ export function useOpenSky(
   const triggerPoll = useCallback(() => {
     if (isPollingPaused.current || !isMounted.current) return;
     if (Date.now() - lastPollData.current.pollTime < 8_000) return;
-    poll();
+    void poll();
   }, [poll]);
+
+  // Keep the self-reschedule refs pointing at the current callbacks.
+  useEffect(() => {
+    fetchTokenRef.current = fetchToken;
+    pollRef.current = poll;
+  }, [fetchToken, poll]);
 
   // ── Dead reckoning (10fps position interpolation) ─────────────────────────
 
@@ -260,10 +278,9 @@ export function useOpenSky(
     if (!bbox) return;
     isMounted.current = true;
 
-    // Initial poll (show loading on first fetch)
-    setState(s => ({ ...s, loading: s.flights.length === 0 }));
-    poll();
-    pollTimer.current = setInterval(poll, POLL_INTERVAL_MS);
+    // poll() sets the loading flag itself on the first fetch.
+    void poll();
+    pollTimer.current = setInterval(() => void poll(), POLL_INTERVAL_MS);
 
     // Pause/resume on visibility change
     const handleVisibility = () => {
@@ -271,7 +288,7 @@ export function useOpenSky(
         isPollingPaused.current = true;
       } else {
         isPollingPaused.current = false;
-        poll(); // immediate poll on resume
+        void poll(); // immediate poll on resume
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
