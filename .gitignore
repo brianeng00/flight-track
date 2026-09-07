@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Secrets — real API credentials live here. Only the placeholder template
+# (.env.example) belongs in version control.
+.env
+.env.*
+!.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
