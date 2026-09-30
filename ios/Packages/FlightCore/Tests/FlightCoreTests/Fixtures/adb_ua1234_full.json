@@ -1,0 +1,68 @@
+[
+  {
+    "greatCircleDistance": { "meter": 1574560.12, "km": 1574.56, "mile": 978.39, "nm": 850.2, "feet": 5165879.7 },
+    "departure": {
+      "airport": {
+        "icao": "KAUS", "iata": "AUS", "localCode": "AUS", "name": "Austin, Austin-Bergstrom", "shortName": "Austin-Bergstrom",
+        "municipalityName": "Austin", "location": { "lat": 30.1945, "lon": -97.6699 }, "countryCode": "US", "timeZone": "America/Chicago"
+      },
+      "scheduledTime": { "utc": "2026-10-05 14:30Z", "local": "2026-10-05 09:30-05:00" },
+      "revisedTime": { "utc": "2026-10-05 14:52Z", "local": "2026-10-05 09:52-05:00" },
+      "runwayTime": { "utc": "2026-10-05 15:04Z", "local": "2026-10-05 10:04-05:00" },
+      "terminal": "1",
+      "gate": "B18",
+      "runway": "18R",
+      "quality": ["Basic", "Live"]
+    },
+    "arrival": {
+      "airport": {
+        "icao": "KORD", "iata": "ORD", "name": "Chicago, Chicago O'Hare", "shortName": "Chicago O'Hare",
+        "municipalityName": "Chicago", "location": { "lat": 41.9786, "lon": -87.9048 }, "countryCode": "US", "timeZone": "America/Chicago"
+      },
+      "scheduledTime": { "utc": "2026-10-05 17:05Z", "local": "2026-10-05 12:05-05:00" },
+      "revisedTime": { "utc": "2026-10-05 17:21Z", "local": "2026-10-05 12:21-05:00" },
+      "predictedTime": { "utc": "2026-10-05 17:18Z", "local": "2026-10-05 12:18-05:00" },
+      "terminal": "1",
+      "gate": "C32",
+      "baggageBelt": "",
+      "quality": ["Basic", "Live"]
+    },
+    "lastUpdatedUtc": "2026-10-05 15:10Z",
+    "number": "UA 1234",
+    "callSign": "UAL1234",
+    "status": "EnRoute",
+    "codeshareStatus": "IsOperator",
+    "isCargo": false,
+    "aircraft": { "reg": "N37502", "modeS": "A4B3C2", "model": "Boeing 737 MAX 8" },
+    "airline": { "name": "United", "iata": "UA", "icao": "UAL" },
+    "location": {
+      "pressureAltitude": { "meter": 10972.8, "km": 10.97, "mile": 6.82, "nm": 5.92, "feet": 36000 },
+      "altitude": { "meter": 11049, "km": 11.05, "mile": 6.87, "nm": 5.97, "feet": 36250 },
+      "pressure": { "hPa": 227, "inHg": 6.7, "mmHg": 170 },
+      "groundSpeed": { "kt": 471, "kmPerHour": 872.3, "miPerHour": 542.0, "meterPerSecond": 242.3 },
+      "trueTrack": { "deg": 34.5, "rad": 0.602 },
+      "vsiFpm": 0,
+      "reportedAtUtc": "2026-10-05T15:40:12Z",
+      "lat": 33.9,
+      "lon": -94.1
+    }
+  },
+  {
+    "departure": {
+      "airport": { "icao": "KORD", "iata": "ORD", "name": "Chicago O'Hare", "timeZone": "America/Chicago" },
+      "scheduledTime": { "utc": "2026-10-05 18:10Z", "local": "2026-10-05 13:10-05:00" },
+      "quality": ["Basic"]
+    },
+    "arrival": {
+      "airport": { "icao": "KBOS", "iata": "BOS", "name": "Boston Logan", "timeZone": "America/New_York" },
+      "scheduledTime": { "utc": "2026-10-05 21:25Z", "local": "2026-10-05 17:25-04:00" },
+      "quality": ["Basic"]
+    },
+    "lastUpdatedUtc": "2026-10-05 12:00Z",
+    "number": "UA 1234",
+    "status": "Expected",
+    "codeshareStatus": "IsOperator",
+    "isCargo": false,
+    "airline": { "name": "United", "iata": "UA", "icao": "UAL" }
+  }
+]

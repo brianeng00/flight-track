@@ -29,3 +29,11 @@ dist-ssr
 *.sln
 *.sw?
 .gstack/
+
+# iOS / Swift
+ios/**/.build/
+ios/**/.swiftpm/
+ios/**/xcuserdata/
+ios/*.xcodeproj
+ios/Config/Secrets.xcconfig
+ios/**/DerivedData/

@@ -1,0 +1,11 @@
+[
+  {
+    "departure": { "airport": { "name": "Somewhere" }, "quality": [] },
+    "arrival": { "airport": { "iata": "XYZ", "name": "Elsewhere" }, "quality": ["Approximate"] },
+    "number": "9E 5001",
+    "status": "SomeFutureStatus",
+    "codeshareStatus": "Unknown",
+    "isCargo": false,
+    "someNewField": { "nested": [1, 2, 3] }
+  }
+]
