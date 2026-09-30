@@ -227,6 +227,7 @@ final class AppModel {
             await startLiveTracking(id)
         }
         // Auto-start for flights that entered their window while we were closed.
+        for flight in flights where liveActivities.wasDismissedByUser(flight.id) { stoppedByUser.insert(flight.id) }
         for flight in flights where isInActiveWindow(flight) && !liveActivities.isRunning(flight.id) && !stoppedByUser.contains(flight.id) {
             await startLiveTracking(flight.id)
         }

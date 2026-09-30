@@ -22,11 +22,17 @@ final class LiveActivityManager {
         return a.activityState == .active || a.activityState == .stale
     }
 
+    /// True when the person swiped the Live Activity away. Respect that: no auto-restart.
+    func wasDismissedByUser(_ flightID: UUID) -> Bool {
+        activity(for: flightID)?.activityState == .dismissed
+    }
+
     /// Must be called while the app is in the foreground (ActivityKit rule).
     /// Returns the activity id, or nil with the reason logged.
     @discardableResult
     func start(attributes: LiveActivityStatic, state: LiveActivityState, now: Date) -> String? {
-        if let existing = activity(for: attributes.flightID) { return existing.id }
+        // Reuse only a live one; an ended or dismissed activity can't be updated again.
+        if let existing = activity(for: attributes.flightID), isRunning(attributes.flightID) { return existing.id }
         guard areActivitiesEnabled else {
             log.error("Live Activities are turned off in Settings")
             return nil
