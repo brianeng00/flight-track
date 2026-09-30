@@ -1,0 +1,14 @@
+// Shared build settings. Personal values (team, bundle ID, API keys) live in Secrets.xcconfig,
+// which is gitignored. Copy Secrets.example.xcconfig to Secrets.xcconfig and fill it in.
+
+// Must be unique to you: Apple rejects a bundle ID another account already registered.
+FT_BUNDLE_ID = com.example.flighttrack
+FT_TEAM_ID =
+FT_APP_GROUP = group.$(FT_BUNDLE_ID)
+
+ADB_APIMARKET_KEY =
+ADB_RAPIDAPI_KEY =
+OPENSKY_CLIENT_ID =
+OPENSKY_CLIENT_SECRET =
+
+#include? "Secrets.xcconfig"

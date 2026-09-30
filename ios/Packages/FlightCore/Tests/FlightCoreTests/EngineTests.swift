@@ -485,3 +485,31 @@ final class CountingStatus: FlightStatusProvider, @unchecked Sendable {
         return try await inner.flights(registration: registration, date: date)
     }
 }
+
+final class DemoSupportTests: XCTestCase {
+    func testShiftMovesEveryDate() {
+        var f = TrackedFlight(query: FlightQuery(number: "UA1234", date: "2026-10-05"),
+                              snapshot: makeSnapshot(departure: dep, depRunway: at(10)), now: at(-60))
+        f.phase = .airborne
+        let state = LiveActivityBuilder.state(for: f, now: at(30))
+        let moved = state.shifted(by: 3600)
+        XCTAssertEqual(moved.departureScheduled, dep.addingTimeInterval(3600))
+        XCTAssertEqual(moved.takeoffAt, at(70))
+        XCTAssertEqual(moved.updatedAt, at(90))
+        XCTAssertEqual(moved.headline, .landsIn(at(215)))
+        XCTAssertEqual(moved.statusText, state.statusText)
+    }
+
+    func testReadsProfileExpiry() {
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0"><dict><key>ExpirationDate</key><date>2026-10-07T18:00:00Z</date><key>Name</key><string>iOS Team Provisioning Profile</string></dict></plist>
+        """
+        var blob = Data([0x30, 0x82, 0x0f, 0x00, 0x06, 0x09]) // fake CMS header bytes
+        blob.append(Data(xml.utf8))
+        blob.append(Data([0xa0, 0x82, 0x0b]))
+        XCTAssertEqual(ProvisioningInfo.expirationDate(profileData: blob), utc("2026-10-07T18:00:00Z"))
+        XCTAssertNil(ProvisioningInfo.expirationDate(profileData: Data("garbage".utf8)))
+    }
+}

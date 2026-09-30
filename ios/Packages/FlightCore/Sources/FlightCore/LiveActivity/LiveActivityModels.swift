@@ -249,3 +249,43 @@ public enum RouteProjection {
         return (route.last!, 0)
     }
 }
+
+extension LiveActivityState {
+    /// Every date moved by `offset`. The in-app demo runs on a fast virtual clock; shifting onto
+    /// the real clock keeps the widget's self-updating countdowns meaningful.
+    public func shifted(by offset: TimeInterval) -> LiveActivityState {
+        func s(_ d: Date?) -> Date? { d?.addingTimeInterval(offset) }
+        var copy = self
+        copy.departureScheduled = s(departureScheduled)
+        copy.departureBest = s(departureBest)
+        copy.arrivalScheduled = s(arrivalScheduled)
+        copy.arrivalBest = s(arrivalBest)
+        copy.takeoffAt = s(takeoffAt)
+        copy.landingAt = s(landingAt)
+        copy.updatedAt = updatedAt.addingTimeInterval(offset)
+        switch headline {
+        case .departsIn(let d): copy.headline = .departsIn(d.addingTimeInterval(offset))
+        case .boardingSoon(let d): copy.headline = .boardingSoon(d.addingTimeInterval(offset))
+        case .landsIn(let d): copy.headline = .landsIn(d.addingTimeInterval(offset))
+        default: break
+        }
+        return copy
+    }
+}
+
+/// Reads the expiry of the provisioning profile embedded in the app. Free Apple accounts issue
+/// profiles that expire after 7 days; after that the app won't launch until you reinstall.
+public enum ProvisioningInfo {
+    /// `embedded.mobileprovision` is a signed CMS blob wrapping an XML plist; pull the plist out.
+    public static func expirationDate(profileData: Data) -> Date? {
+        guard let start = profileData.range(of: Data("<?xml".utf8)),
+              let end = profileData.range(of: Data("</plist>".utf8), in: start.lowerBound..<profileData.endIndex) else {
+            return nil
+        }
+        let xml = profileData.subdata(in: start.lowerBound..<end.upperBound)
+        guard let plist = try? PropertyListSerialization.propertyList(from: xml, options: [], format: nil) as? [String: Any] else {
+            return nil
+        }
+        return plist["ExpirationDate"] as? Date
+    }
+}

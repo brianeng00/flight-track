@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     container: swift:6.1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: swift test
         working-directory: ios/Packages/FlightCore
         run: swift test --parallel
@@ -33,9 +33,28 @@ jobs:
     name: FlightCore tests (macOS)
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Toolchain
         run: xcodebuild -version && swift --version
       - name: swift test
         working-directory: ios/Packages/FlightCore
         run: swift test
+
+  app-build:
+    name: App + widget build (iOS Simulator)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Toolchain
+        run: xcodebuild -version
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+      - name: Build (unsigned)
+        working-directory: ios
+        run: |
+          xcodebuild -project FlightTrack.xcodeproj -scheme FlightTrack \
+            -destination 'generic/platform=iOS Simulator' -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO -quiet build
